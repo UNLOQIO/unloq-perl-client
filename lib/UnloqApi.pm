@@ -6,6 +6,7 @@ use warnings;
 use Moose;
 use LWP::UserAgent;
 use JSON qw/decode_json/;
+use Digest::SHA qw/hmac_sha256_base64/;
 use UnloqResults;
 
 has key => (
@@ -278,4 +279,41 @@ sub login {
     }
 }
 
+=head2 login
+
+    The call will verify the signature of an incoming webhook.
+    
+    Parameters:
+        - $data - the incoming POST data.
+        - $signature - the X-Unloq-Signature header.
+    
+    Steps:
+      1. Create a string with the URL PATH(PATH ONLY), including QS and the first/
+      2. Sort the data alphabetically,
+      3. Append each KEY,VALUE to the string
+      4. HMAC-SHA256 with the app's api secret
+      5. Base64-encode the signature.
+
+=cut
+
+sub verifySignature {
+    my $self = shift;
+    my ($path,$data,$signature) = @_;
+    
+    return 0 if (!$path || !$signature);
+    
+    $path = "/".$path if (substr($path,0,1) ne "/");
+    
+    my @sorted = sort {$a cmp $b} keys $data;
+    
+    foreach my $key (@sorted){
+        next if ($key eq "uauth");
+        my $value = $data->{$key} ? $data->{$key} : "";
+        $path = $path.$key.$value;
+    }
+
+    my $signHash = hmac_sha256_base64($path, $self->secret);
+    
+    return ($signature ne $signHash) ? 0 : 1;
+}
 1;
